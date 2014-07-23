@@ -1,10 +1,13 @@
 --------------------------------------------------------------------------------
 
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module DB.Audit
-    ( createAudit
+    ( initAuditSchema
+    , createAudit
     )
   where
 
@@ -13,6 +16,18 @@ import qualified Database.PostgreSQL.Simple.Types as P
 import DB (DB (..), extendID, sql)
 
 --------------------------------------------------------------------------------
+
+initAuditSchema :: DB -> IO ()
+initAuditSchema db =
+    withTransaction db $
+      query1_ db [sql|
+        SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'hstore')
+      |] >>= \case
+        Just (P.Only True) -> return ()
+        _ -> do
+          execute_ db [sql|
+            CREATE EXTENSION hstore
+          |]
 
 createAudit :: DB -> P.Identifier -> IO ()
 createAudit db tab = do

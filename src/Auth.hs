@@ -27,7 +27,7 @@ import qualified Database.PostgreSQL.Simple.ToField as P
 
 import Crypto (EncryptedPassword, Password, encryptPassword, verifyPassword)
 import DB (DB (..), sql)
-import DB.Audit (createAudit)
+import DB.Audit (createAudit, initAuditSchema)
 import DB.Notify (createNotify)
 
 --------------------------------------------------------------------------------
@@ -87,13 +87,8 @@ data AuthState = AuthState
 
 initAuth :: DB -> IO Auth
 initAuth db = do
-    createActorsTable db
-    createSessionsTable db
-    createOrganisationsTable db
-    createRolesTable db
-    createPrivilegesTable db
-    createPerformsTable db
-    createIncludesTable db
+    initAuditSchema db
+    initAuthSchema db
     let
       st = AuthState
         { db' = db
@@ -114,6 +109,25 @@ initAuth db = do
       }
 
 --------------------------------------------------------------------------------
+
+initAuthSchema :: DB -> IO ()
+initAuthSchema db =
+    withTransaction db $
+      query1_ db [sql|
+        SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'pgcrypto')
+      |] >>= \case
+        Just (P.Only True) -> return ()
+        _ -> do
+          execute_ db [sql|
+            CREATE EXTENSION pgcrypto
+          |]
+          createActorsTable db
+          createSessionsTable db
+          createOrganisationsTable db
+          createRolesTable db
+          createPrivilegesTable db
+          createPerformsTable db
+          createIncludesTable db
 
 createActorsTable :: DB -> IO ()
 createActorsTable db = do
