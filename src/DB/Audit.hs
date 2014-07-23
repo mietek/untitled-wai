@@ -10,15 +10,12 @@ module DB.Audit
 
 import qualified Database.PostgreSQL.Simple.Types as P
 
-import DB (DB (..), sql)
+import DB (DB (..), extendID, sql)
 
 --------------------------------------------------------------------------------
 
 createAudit :: DB -> P.Identifier -> IO ()
 createAudit db tab = do
-    execute_ db [sql|
-      CREATE EXTENSION hstore
-    |]
     createAuditTable db tab
     createAuditFunction db tab
     createAuditTrigger db tab
@@ -26,32 +23,34 @@ createAudit db tab = do
 --------------------------------------------------------------------------------
 
 createAuditTable :: DB -> P.Identifier -> IO ()
-createAuditTable db tab =
-    execute db [tab] [sql|
-      CREATE TABLE ?_audit()
-        ( audit_id    serial      PRIMARY KEY WITH fillfactor(100)
+createAuditTable db tab = do
+    let atab = extendID tab "_audit"
+    execute db [atab] [sql|
+      CREATE TABLE IF NOT EXISTS ?
+        ( audit_id    serial      PRIMARY KEY
         , audit_at    timestamptz NOT NULL DEFAULT current_timestamp
         , audit_query text        NOT NULL DEFAULT current_query()
-        , audit_op    text        NOT NULL CHECK (op IN ('I', 'U', 'D'))
+        , audit_op    text        NOT NULL CHECK (audit_op IN ('I', 'U', 'D'))
         , audit_old   hstore
         , audit_new   hstore
         )
     |]
 
 createAuditFunction :: DB -> P.Identifier -> IO ()
-createAuditFunction db tab =
-    execute db (tab, tab, tab, tab) [sql|
-      CREATE FUNCTION ?_audit() RETURNS trigger
+createAuditFunction db tab = do
+    let afun = extendID tab "_audit"
+    execute db (afun, tab, tab, tab) [sql|
+      CREATE FUNCTION ?() RETURNS trigger
       AS $plpgsql$
       BEGIN
         IF TG_OP = 'INSERT' THEN
-          INSERT INTO ? (op, new)
+          INSERT INTO ? (audit_op, audit_new)
             VALUES ('I', hstore(NEW.*));
         ELSIF TG_OP = 'UPDATE' THEN
-          INSERT INTO ? (op, old, new)
+          INSERT INTO ? (audit_op, audit_old, audit_new)
             VALUES ('U', hstore(OLD.*), hstore(NEW.*));
         ELSIF TG_OP = 'DELETE' THEN
-          INSERT INTO ? (op, old)
+          INSERT INTO ? (audit_op, audit_old)
             VALUES ('D', hstore(OLD.*));
         END IF;
         RETURN NULL;
@@ -60,11 +59,12 @@ createAuditFunction db tab =
     |]
 
 createAuditTrigger :: DB -> P.Identifier -> IO ()
-createAuditTrigger db tab =
-    execute db (tab, tab) [sql|
+createAuditTrigger db tab = do
+    let atab = extendID tab "_audit"
+    execute db (tab, atab) [sql|
       CREATE TRIGGER audit
       AFTER INSERT OR UPDATE OR DELETE ON ?
-      FOR EACH ROW EXECUTE PROCEDURE ?_audit()
+      FOR EACH ROW EXECUTE PROCEDURE ?()
     |]
 
 --------------------------------------------------------------------------------

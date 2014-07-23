@@ -6,15 +6,19 @@
 module DB
     ( DB (..)
     , initDB
+    , extendID
     , sql
     )
   where
 
 import Control.Monad (void)
 import Data.String (fromString)
+import Data.Text (Text)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 
+import qualified Data.Text as T
 import qualified Database.PostgreSQL.Simple as P
+import qualified Database.PostgreSQL.Simple.Types as P
 
 --------------------------------------------------------------------------------
 
@@ -42,14 +46,18 @@ initDB dburl = do
         { db' = db
         }
     return $ DB
-        { execute         = execute' st
-        , execute_        = execute_' st
-        , query           = query' st
-        , query_          = query_' st
-        , query1          = query1' st
-        , query1_         = query1_' st
-        , withTransaction = withTransaction' st
-        }
+      { execute         = execute' st
+      , execute_        = execute_' st
+      , query           = query' st
+      , query_          = query_' st
+      , query1          = query1' st
+      , query1_         = query1_' st
+      , withTransaction = withTransaction' st
+      }
+
+extendID :: P.Identifier -> Text -> P.Identifier
+extendID base ext =
+    P.Identifier (T.append (P.fromIdentifier base) ext)
 
 --------------------------------------------------------------------------------
 

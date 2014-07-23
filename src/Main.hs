@@ -1,6 +1,7 @@
 --------------------------------------------------------------------------------
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Main where
 
@@ -12,7 +13,7 @@ import qualified Network.Wai as WAI
 import qualified Network.Wai.Handler.Warp as Warp
 
 import Auth (initAuth)
-import DB (initDB)
+import DB (DB (..), initDB, sql)
 
 --------------------------------------------------------------------------------
 
@@ -21,7 +22,14 @@ main = do
     port <- read <$> getEnv "PORT"
     dburl <- getEnv "DATABASE_URL"
     db <- initDB dburl
-    auth <- initAuth db
+    execute_ db [sql|
+      CREATE EXTENSION hstore
+    |]
+    execute_ db [sql|
+      CREATE EXTENSION pgcrypto
+    |]
+    _ <- initAuth db
+    putStrLn ("Listening on " ++ show port)
     Warp.run port app
 
 --------------------------------------------------------------------------------

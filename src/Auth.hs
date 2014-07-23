@@ -87,9 +87,6 @@ data AuthState = AuthState
 
 initAuth :: DB -> IO Auth
 initAuth db = do
-    execute_ db [sql|
-      CREATE EXTENSION pgcrypto
-    |]
     createActorsTable db
     createSessionsTable db
     createOrganisationsTable db
@@ -135,8 +132,8 @@ createSessionsTable :: DB -> IO ()
 createSessionsTable db = do
     execute_ db [sql|
       CREATE TABLE sessions
-        ( session_id       bytea   PRIMARY KEY DEFAULT gen_random_bytes(16)
-        , session_actor_id integer NOT NULL REFERENCES actors
+        ( session_id bytea   PRIMARY KEY DEFAULT gen_random_bytes(16)
+        , actor_id   integer NOT NULL REFERENCES actors
         )
     |]
     execute_ db [sql|
@@ -182,28 +179,28 @@ createPerformsTable :: DB -> IO ()
 createPerformsTable db = do
     execute_ db [sql|
       CREATE TABLE performs
-        ( perform_id              serial  PRIMARY KEY
-        , perform_actor_id        integer NOT NULL REFERENCES actors
-        , perform_role_id         integer NOT NULL REFERENCES roles
-        , perform_organisation_id integer NOT NULL REFERENCES organisations
-        ,                                 UNIQUE (actor_id, role_id, organisation_id)
+        ( perform_id      serial  PRIMARY KEY
+        , actor_id        integer NOT NULL REFERENCES actors
+        , role_id         integer NOT NULL REFERENCES roles
+        , organisation_id integer NOT NULL REFERENCES organisations
+        , UNIQUE (actor_id, role_id, organisation_id)
         )
     |]
-    createAudit db "performs_at"
-    createNotify db "performs_at" "performs_at_id"
+    createAudit db "performs"
+    createNotify db "performs" "perform_id"
 
 createIncludesTable :: DB -> IO ()
 createIncludesTable db = do
     execute_ db [sql|
       CREATE TABLE includes
-        ( include_id           serial  PRIMARY KEY
-        , include_role_id      integer NOT NULL REFERENCES roles
-        , include_privilege_id integer NOT NULL REFERENCES privileges
-        ,                              UNIQUE (role_id, privilege_id)
+        ( include_id   serial  PRIMARY KEY
+        , role_id      integer NOT NULL REFERENCES roles
+        , privilege_id integer NOT NULL REFERENCES privileges
+        , UNIQUE (role_id, privilege_id)
         )
     |]
     createAudit db "includes"
-    createNotify db "includes" "includes_id"
+    createNotify db "includes" "include_id"
 
 --------------------------------------------------------------------------------
 
@@ -225,7 +222,7 @@ deleteActor' st aid =
       |]
       execute (db' st) [aid :: ActorID] [sql|
         DELETE FROM sessions
-        WHERE session_actor_id = ?
+        WHERE actor_id = ?
       |]
       execute (db' st) [aid :: ActorID] [sql|
         DELETE FROM performs
@@ -251,7 +248,7 @@ resetPassword' st aid newunpass = do
       |]
       execute (db' st) [aid :: ActorID] [sql|
         DELETE FROM sessions
-        WHERE session_actor_id = ?
+        WHERE actor_id = ?
       |]
 
 createSession' :: AuthState -> EmailAddress -> Password -> IO (Maybe SessionID)
@@ -264,7 +261,7 @@ createSession' st email unpass =
       |] >>= \case
         Just (aid, pass) | verifyPassword unpass pass ->
           query1 (db' st) [aid :: ActorID] [sql|
-            INSERT INTO sessions (session_actor_id)
+            INSERT INTO sessions (actor_id)
             VALUES (?)
             RETURNING session_id
           |]
@@ -290,8 +287,7 @@ getEmailAddress' st sid =
     query1 (db' st) [sid :: SessionID] [sql|
       SELECT actor_email_address
       FROM actors
-      INNER JOIN sessions
-      ON actor_id = session_actor_id
+      NATURAL JOIN sessions
       WHERE session_id = ?
     |]
 
@@ -300,8 +296,7 @@ getName' st sid =
     query1 (db' st) [sid :: SessionID] [sql|
       SELECT actor_email_name
       FROM actors
-      INNER JOIN sessions
-      ON actor_id = session_actor_id
+      NATURAL JOIN sessions
       WHERE session_id = ?
     |]
 
@@ -311,8 +306,7 @@ setEmailAddress' st sid unpass newemail =
       query1 (db' st) [sid :: SessionID] [sql|
         SELECT actor_id, actor_password
           FROM actors
-          INNER JOIN sessions
-            ON actor_id = session_actor_id
+          NATURAL JOIN sessions
           WHERE session_id = ?
       |] >>= \case
         Just (aid, pass) | verifyPassword unpass pass -> do
@@ -323,7 +317,7 @@ setEmailAddress' st sid unpass newemail =
           |]
           execute (db' st) (aid :: ActorID, sid :: SessionID) [sql|
             DELETE FROM sessions
-            WHERE session_actor_id = ?
+            WHERE actor_id = ?
             AND session_id <> ?
           |]
           return True
@@ -336,8 +330,7 @@ setPassword' st sid unpass newunpass = do
       query1 (db' st) [sid :: SessionID] [sql|
         SELECT actor_id, actor_password
           FROM actors
-          INNER JOIN sessions
-            ON actor_id = session_actor_id
+          NATURAL JOIN sessions
           WHERE session_id = ?
       |] >>= \case
         Just (aid, pass) | verifyPassword unpass pass -> do
@@ -348,7 +341,7 @@ setPassword' st sid unpass newunpass = do
           |]
           execute (db' st) (aid :: ActorID, sid :: SessionID) [sql|
             DELETE FROM sessions
-            WHERE session_actor_id = ?
+            WHERE actor_id = ?
             AND session_id <> ?
           |]
           return True
@@ -360,8 +353,7 @@ setName' st sid newname =
       UPDATE actors
       SET actor_name = ?
       FROM actors
-      INNER JOIN sessions
-      ON actor_id = session_actor_id
+      NATURAL JOIN sessions
       WHERE session_id = ?
     |]
 
