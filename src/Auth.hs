@@ -25,7 +25,7 @@ import qualified Database.PostgreSQL.Simple.FromField as P
 import qualified Database.PostgreSQL.Simple.FromRow as P
 import qualified Database.PostgreSQL.Simple.ToField as P
 
-import Crypto (Password, UnencryptedPassword, encryptPassword, verifyPassword)
+import Crypto (EncryptedPassword, Password, encryptPassword, verifyPassword)
 import DB (DB (..), sql)
 import DB.Audit (createAudit)
 import DB.Notify (createNotify)
@@ -65,17 +65,17 @@ instance P.FromRow SessionID where
   fromRow = SessionID <$> P.field
 
 data Auth = Auth
-    { createActor     :: EmailAddress -> UnencryptedPassword -> Name -> IO (Maybe ActorID)
+    { createActor     :: EmailAddress -> Password -> Name -> IO (Maybe ActorID)
     , deleteActor     :: ActorID -> IO ()
     , findActor       :: EmailAddress -> IO (Maybe ActorID)
-    , resetPassword   :: ActorID -> UnencryptedPassword -> IO ()
-    , createSession   :: EmailAddress -> UnencryptedPassword -> IO (Maybe SessionID)
+    , resetPassword   :: ActorID -> Password -> IO ()
+    , createSession   :: EmailAddress -> Password -> IO (Maybe SessionID)
     , deleteSession   :: SessionID -> IO ()
     , getActor        :: SessionID -> IO (Maybe ActorID)
     , getEmailAddress :: SessionID -> IO (Maybe EmailAddress)
     , getName         :: SessionID -> IO (Maybe Name)
-    , setEmailAddress :: SessionID -> UnencryptedPassword -> EmailAddress -> IO Bool
-    , setPassword     :: SessionID -> UnencryptedPassword -> UnencryptedPassword -> IO Bool
+    , setEmailAddress :: SessionID -> Password -> EmailAddress -> IO Bool
+    , setPassword     :: SessionID -> Password -> Password -> IO Bool
     , setName         :: SessionID -> Name -> IO ()
     }
 
@@ -207,10 +207,10 @@ createIncludesTable db = do
 
 --------------------------------------------------------------------------------
 
-createActor' :: AuthState -> EmailAddress -> UnencryptedPassword -> Name -> IO (Maybe ActorID)
+createActor' :: AuthState -> EmailAddress -> Password -> Name -> IO (Maybe ActorID)
 createActor' st newemail newunpass newname = do
     newpass <- encryptPassword newunpass
-    query1 (db' st) (newemail :: EmailAddress, newpass :: Password, newname :: Name) [sql|
+    query1 (db' st) (newemail :: EmailAddress, newpass :: EncryptedPassword, newname :: Name) [sql|
       INSERT INTO actors (actor_email_address, actor_password, actor_name)
       VALUES (?, ?, ?)
       RETURNING actor_id
@@ -240,11 +240,11 @@ findActor' st email =
       WHERE actor_email_address = ?
     |]
 
-resetPassword' :: AuthState -> ActorID -> UnencryptedPassword -> IO ()
+resetPassword' :: AuthState -> ActorID -> Password -> IO ()
 resetPassword' st aid newunpass = do
     newpass <- encryptPassword newunpass
     withTransaction (db' st) $ do
-      execute (db' st) (newpass :: Password, aid :: ActorID) [sql|
+      execute (db' st) (newpass :: EncryptedPassword, aid :: ActorID) [sql|
         UPDATE actors
         SET actor_password = ?
         WHERE actor_id = ?
@@ -254,7 +254,7 @@ resetPassword' st aid newunpass = do
         WHERE session_actor_id = ?
       |]
 
-createSession' :: AuthState -> EmailAddress -> UnencryptedPassword -> IO (Maybe SessionID)
+createSession' :: AuthState -> EmailAddress -> Password -> IO (Maybe SessionID)
 createSession' st email unpass =
     withTransaction (db' st) $
       query1 (db' st) [email :: EmailAddress] [sql|
@@ -305,7 +305,7 @@ getName' st sid =
       WHERE session_id = ?
     |]
 
-setEmailAddress' :: AuthState -> SessionID -> UnencryptedPassword -> EmailAddress -> IO Bool
+setEmailAddress' :: AuthState -> SessionID -> Password -> EmailAddress -> IO Bool
 setEmailAddress' st sid unpass newemail =
     withTransaction (db' st) $
       query1 (db' st) [sid :: SessionID] [sql|
@@ -329,7 +329,7 @@ setEmailAddress' st sid unpass newemail =
           return True
         _ -> return False
 
-setPassword' :: AuthState -> SessionID -> UnencryptedPassword -> UnencryptedPassword -> IO Bool
+setPassword' :: AuthState -> SessionID -> Password -> Password -> IO Bool
 setPassword' st sid unpass newunpass = do
     newpass <- encryptPassword newunpass
     withTransaction (db' st) $
@@ -341,7 +341,7 @@ setPassword' st sid unpass newunpass = do
           WHERE session_id = ?
       |] >>= \case
         Just (aid, pass) | verifyPassword unpass pass -> do
-          execute (db' st) (newpass :: Password, aid :: ActorID) [sql|
+          execute (db' st) (newpass :: EncryptedPassword, aid :: ActorID) [sql|
             UPDATE actors
             SET actor_password = ?
             WHERE actor_id = ?
