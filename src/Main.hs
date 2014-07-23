@@ -1,7 +1,6 @@
 --------------------------------------------------------------------------------
 
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 
 module Main where
 
@@ -29,6 +28,7 @@ main = do
     dburl <- getEnv "DATABASE_URL"
     db <- initDB dburl
     _ <- initAuth db
+    putStrLn "Started"
     putStrLn ("Listening on " ++ show port)
     Warp.run port app
 
@@ -36,7 +36,7 @@ main = do
 
 handleSIGTERM :: IO ()
 handleSIGTERM = do
-    putStrLn "Exiting"
+    putStrLn "Stopped with SIGTERM"
     exitImmediately ExitSuccess
 
 app :: WAI.Application
