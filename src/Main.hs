@@ -8,7 +8,7 @@ import Control.Applicative ((<$>))
 import System.Environment (getEnv)
 import System.Exit (ExitCode (..))
 import System.IO (BufferMode (..), hSetBuffering, stdout)
-import System.Posix.Process (exitImmediately)
+import System.Posix.Process (exitImmediately, getProcessID)
 import System.Posix.Signals (Handler (..), installHandler, sigTERM)
 
 import qualified Network.HTTP.Types as HTTP
@@ -28,15 +28,16 @@ main = do
     dburl <- getEnv "DATABASE_URL"
     db <- initDB dburl
     _ <- initAuth db
-    putStrLn "Started"
-    putStrLn ("Listening on " ++ show port)
+    pid <- getProcessID
+    putStrLn (show pid ++ ": Started on port " ++ show port)
     Warp.run port app
 
 --------------------------------------------------------------------------------
 
 handleSIGTERM :: IO ()
 handleSIGTERM = do
-    putStrLn "Stopped with SIGTERM"
+    pid <- getProcessID
+    putStrLn (show pid ++ ": Stopped with SIGTERM")
     exitImmediately ExitSuccess
 
 app :: WAI.Application
