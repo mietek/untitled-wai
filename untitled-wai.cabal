@@ -28,6 +28,7 @@ executable untitled-wai
                           , scrypt
                           , text
                           , time
+                          , unix
                           , wai
                           , warp
   ghc-options:            -Wall
