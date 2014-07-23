@@ -28,7 +28,7 @@ import qualified Database.PostgreSQL.Simple.ToField as P
 
 import Crypto (Pass, encryptPass, verifyPass)
 import DB (DB (..), sql)
-import DB.Audit (createAudit, initAuditSchema)
+import DB.Audit (createAudit, createAuditSchema)
 import DB.Notify (createNotify)
 
 --------------------------------------------------------------------------------
@@ -88,8 +88,8 @@ data AuthState = AuthState
 
 initAuth :: DB -> IO Auth
 initAuth db = do
-    initAuditSchema db
-    initAuthSchema db
+    createAuditSchema db
+    createAuthSchema db
     let
       st = AuthState
         { db' = db
@@ -111,15 +111,15 @@ initAuth db = do
 
 --------------------------------------------------------------------------------
 
-initAuthSchema :: DB -> IO ()
-initAuthSchema db =
+createAuthSchema :: DB -> IO ()
+createAuthSchema db =
     withTransaction db $
       query1_ db [sql|
         SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'pgcrypto')
       |] >>= \case
         Just ([True]) -> return ()
         _ -> do
-          putStrLn "Initing auth schema"
+          putStrLn "Creating auth schema"
           execute_ db [sql|
             CREATE EXTENSION pgcrypto
           |]

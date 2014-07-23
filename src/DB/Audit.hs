@@ -5,7 +5,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module DB.Audit
-    ( initAuditSchema
+    ( createAuditSchema
     , createAudit
     )
   where
@@ -16,15 +16,15 @@ import DB (DB (..), extendID, sql)
 
 --------------------------------------------------------------------------------
 
-initAuditSchema :: DB -> IO ()
-initAuditSchema db =
+createAuditSchema :: DB -> IO ()
+createAuditSchema db =
     withTransaction db $
       query1_ db [sql|
         SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'hstore')
       |] >>= \case
         Just ([True]) -> return ()
         _ -> do
-          putStrLn "Initing audit schema"
+          putStrLn "Creating audit schema"
           execute_ db [sql|
             CREATE EXTENSION hstore
           |]
