@@ -119,6 +119,7 @@ initAuthSchema db =
       |] >>= \case
         Just ([True]) -> return ()
         _ -> do
+          putStrLn "Initing auth schema"
           execute_ db [sql|
             CREATE EXTENSION pgcrypto
           |]

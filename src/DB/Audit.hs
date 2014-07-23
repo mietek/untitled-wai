@@ -24,6 +24,7 @@ initAuditSchema db =
       |] >>= \case
         Just ([True]) -> return ()
         _ -> do
+          putStrLn "Initing audit schema"
           execute_ db [sql|
             CREATE EXTENSION hstore
           |]
