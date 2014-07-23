@@ -1,11 +1,11 @@
 --------------------------------------------------------------------------------
 
 module Crypto
-    ( Password
-    , EncryptedPassword
-    , toPassword
-    , encryptPassword
-    , verifyPassword
+    ( Pass
+    , EncryptedPass
+    , toPass
+    , encryptPass
+    , verifyPass
     )
   where
 
@@ -19,31 +19,31 @@ import qualified Database.PostgreSQL.Simple.ToField as P
 
 --------------------------------------------------------------------------------
 
-newtype Password = Password C.Pass
+newtype Pass = Pass C.Pass
 
-newtype EncryptedPassword = EncryptedPassword C.EncryptedPass
+newtype EncryptedPass = EncryptedPass C.EncryptedPass
   deriving (Eq, Show)
 
-instance P.FromField EncryptedPassword where
+instance P.FromField EncryptedPass where
   fromField f dat =
-      EncryptedPassword . C.EncryptedPass <$> P.fromField f dat
+      EncryptedPass . C.EncryptedPass <$> P.fromField f dat
 
-instance P.ToField EncryptedPassword where
-  toField (EncryptedPassword (C.EncryptedPass p)) =
+instance P.ToField EncryptedPass where
+  toField (EncryptedPass (C.EncryptedPass p)) =
       P.toField p
 
 --------------------------------------------------------------------------------
 
-toPassword :: Text -> Password
-toPassword pass =
-    Password (C.Pass (T.encodeUtf8 pass))
+toPass :: Text -> Pass
+toPass pass =
+    Pass (C.Pass (T.encodeUtf8 pass))
 
-encryptPassword :: Password -> IO EncryptedPassword
-encryptPassword (Password pass) =
-    EncryptedPassword <$> C.encryptPassIO' pass
+encryptPass :: Pass -> IO EncryptedPass
+encryptPass (Pass pass) =
+    EncryptedPass <$> C.encryptPassIO' pass
 
-verifyPassword :: Password -> EncryptedPassword -> Bool
-verifyPassword (Password unpass) (EncryptedPassword pass) =
-    C.verifyPass' unpass pass
+verifyPass :: Pass -> EncryptedPass -> Bool
+verifyPass (Pass pass) (EncryptedPass encpass) =
+    C.verifyPass' pass encpass
 
 --------------------------------------------------------------------------------
