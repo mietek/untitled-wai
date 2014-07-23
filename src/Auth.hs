@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Auth
     ( ActorID
@@ -25,7 +26,7 @@ import qualified Database.PostgreSQL.Simple.FromField as P
 import qualified Database.PostgreSQL.Simple.FromRow as P
 import qualified Database.PostgreSQL.Simple.ToField as P
 
-import Crypto (EncryptedPassword, Password, encryptPassword, verifyPassword)
+import Crypto (Password, encryptPassword, verifyPassword)
 import DB (DB (..), sql)
 import DB.Audit (createAudit, initAuditSchema)
 import DB.Notify (createNotify)
@@ -116,7 +117,7 @@ initAuthSchema db =
       query1_ db [sql|
         SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'pgcrypto')
       |] >>= \case
-        Just (P.Only True) -> return ()
+        Just ([True]) -> return ()
         _ -> do
           execute_ db [sql|
             CREATE EXTENSION pgcrypto
@@ -221,7 +222,7 @@ createIncludesTable db = do
 createActor' :: AuthState -> EmailAddress -> Password -> Name -> IO (Maybe ActorID)
 createActor' st newemail newunpass newname = do
     newpass <- encryptPassword newunpass
-    query1 (db' st) (newemail :: EmailAddress, newpass :: EncryptedPassword, newname :: Name) [sql|
+    query1 (db' st) (newemail, newpass, newname) [sql|
       INSERT INTO actors (actor_email_address, actor_password, actor_name)
       VALUES (?, ?, ?)
       RETURNING actor_id
@@ -230,22 +231,22 @@ createActor' st newemail newunpass newname = do
 deleteActor' :: AuthState -> ActorID -> IO ()
 deleteActor' st aid =
     withTransaction (db' st) $ do
-      execute (db' st) [aid :: ActorID] [sql|
+      execute (db' st) [aid] [sql|
         DELETE FROM actors
         WHERE actor_id = ?
       |]
-      execute (db' st) [aid :: ActorID] [sql|
+      execute (db' st) [aid] [sql|
         DELETE FROM sessions
         WHERE actor_id = ?
       |]
-      execute (db' st) [aid :: ActorID] [sql|
+      execute (db' st) [aid] [sql|
         DELETE FROM performs
         WHERE perform_actor_id = ?
       |]
 
 findActor' :: AuthState -> EmailAddress -> IO (Maybe ActorID)
 findActor' st email =
-    query1 (db' st) [email :: EmailAddress] [sql|
+    query1 (db' st) [email] [sql|
       SELECT actor_id
       FROM actors
       WHERE actor_email_address = ?
@@ -255,12 +256,12 @@ resetPassword' :: AuthState -> ActorID -> Password -> IO ()
 resetPassword' st aid newunpass = do
     newpass <- encryptPassword newunpass
     withTransaction (db' st) $ do
-      execute (db' st) (newpass :: EncryptedPassword, aid :: ActorID) [sql|
+      execute (db' st) (newpass, aid) [sql|
         UPDATE actors
         SET actor_password = ?
         WHERE actor_id = ?
       |]
-      execute (db' st) [aid :: ActorID] [sql|
+      execute (db' st) [aid] [sql|
         DELETE FROM sessions
         WHERE actor_id = ?
       |]
@@ -268,13 +269,13 @@ resetPassword' st aid newunpass = do
 createSession' :: AuthState -> EmailAddress -> Password -> IO (Maybe SessionID)
 createSession' st email unpass =
     withTransaction (db' st) $
-      query1 (db' st) [email :: EmailAddress] [sql|
+      query1 (db' st) [email] [sql|
         SELECT actor_id, actor_password
           FROM actors
           WHERE actor_email_address = ?
       |] >>= \case
-        Just (aid, pass) | verifyPassword unpass pass ->
-          query1 (db' st) [aid :: ActorID] [sql|
+        Just (aid :: ActorID, pass) | verifyPassword unpass pass ->
+          query1 (db' st) [aid] [sql|
             INSERT INTO sessions (actor_id)
             VALUES (?)
             RETURNING session_id
@@ -283,14 +284,14 @@ createSession' st email unpass =
 
 deleteSession' :: AuthState -> SessionID -> IO ()
 deleteSession' st sid =
-    execute (db' st) [sid :: SessionID] [sql|
+    execute (db' st) [sid] [sql|
       DELETE FROM sessions
       WHERE session_id = ?
     |]
 
 getActor' :: AuthState -> SessionID -> IO (Maybe ActorID)
 getActor' st sid =
-    query1 (db' st) [sid :: SessionID] [sql|
+    query1 (db' st) [sid] [sql|
       SELECT actors_id
       FROM sessions
       WHERE session_id = ?
@@ -298,7 +299,7 @@ getActor' st sid =
 
 getEmailAddress' :: AuthState -> SessionID -> IO (Maybe EmailAddress)
 getEmailAddress' st sid =
-    query1 (db' st) [sid :: SessionID] [sql|
+    query1 (db' st) [sid] [sql|
       SELECT actor_email_address
       FROM actors
       NATURAL JOIN sessions
@@ -307,7 +308,7 @@ getEmailAddress' st sid =
 
 getName' :: AuthState -> SessionID -> IO (Maybe Name)
 getName' st sid =
-    query1 (db' st) [sid :: SessionID] [sql|
+    query1 (db' st) [sid] [sql|
       SELECT actor_email_name
       FROM actors
       NATURAL JOIN sessions
@@ -317,19 +318,19 @@ getName' st sid =
 setEmailAddress' :: AuthState -> SessionID -> Password -> EmailAddress -> IO Bool
 setEmailAddress' st sid unpass newemail =
     withTransaction (db' st) $
-      query1 (db' st) [sid :: SessionID] [sql|
+      query1 (db' st) [sid] [sql|
         SELECT actor_id, actor_password
           FROM actors
           NATURAL JOIN sessions
           WHERE session_id = ?
       |] >>= \case
-        Just (aid, pass) | verifyPassword unpass pass -> do
-          execute (db' st) (newemail :: EmailAddress, aid :: ActorID) [sql|
+        Just (aid :: ActorID, pass) | verifyPassword unpass pass -> do
+          execute (db' st) (newemail, aid) [sql|
             UPDATE actors
             SET actor_email_address = ?
             WHERE actor_id = ?
           |]
-          execute (db' st) (aid :: ActorID, sid :: SessionID) [sql|
+          execute (db' st) (aid, sid) [sql|
             DELETE FROM sessions
             WHERE actor_id = ?
             AND session_id <> ?
@@ -341,19 +342,19 @@ setPassword' :: AuthState -> SessionID -> Password -> Password -> IO Bool
 setPassword' st sid unpass newunpass = do
     newpass <- encryptPassword newunpass
     withTransaction (db' st) $
-      query1 (db' st) [sid :: SessionID] [sql|
+      query1 (db' st) [sid] [sql|
         SELECT actor_id, actor_password
           FROM actors
           NATURAL JOIN sessions
           WHERE session_id = ?
       |] >>= \case
-        Just (aid, pass) | verifyPassword unpass pass -> do
-          execute (db' st) (newpass :: EncryptedPassword, aid :: ActorID) [sql|
+        Just (aid :: ActorID, pass) | verifyPassword unpass pass -> do
+          execute (db' st) (newpass, aid) [sql|
             UPDATE actors
             SET actor_password = ?
             WHERE actor_id = ?
           |]
-          execute (db' st) (aid :: ActorID, sid :: SessionID) [sql|
+          execute (db' st) (aid, sid) [sql|
             DELETE FROM sessions
             WHERE actor_id = ?
             AND session_id <> ?
@@ -363,7 +364,7 @@ setPassword' st sid unpass newunpass = do
 
 setName' :: AuthState -> SessionID -> Name -> IO ()
 setName' st sid newname =
-    execute (db' st) (newname :: Name, sid :: SessionID) [sql|
+    execute (db' st) (newname, sid) [sql|
       UPDATE actors
       SET actor_name = ?
       FROM actors

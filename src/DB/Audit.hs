@@ -22,7 +22,7 @@ initAuditSchema db =
       query1_ db [sql|
         SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'hstore')
       |] >>= \case
-        Just (P.Only True) -> return ()
+        Just ([True]) -> return ()
         _ -> do
           execute_ db [sql|
             CREATE EXTENSION hstore
