@@ -75,8 +75,8 @@ data Auth = Auth
     , getActor        :: SessionID -> IO (Maybe ActorID)
     , getEmailAddress :: SessionID -> IO (Maybe EmailAddress)
     , getName         :: SessionID -> IO (Maybe Name)
-    , setEmailAddress :: SessionID -> Pass -> EmailAddress -> IO Bool
-    , setPass         :: SessionID -> Pass -> Pass -> IO Bool
+    , setEmailAddress :: SessionID -> Pass -> EmailAddress -> IO (Maybe ())
+    , setPass         :: SessionID -> Pass -> Pass -> IO (Maybe ())
     , setName         :: SessionID -> Name -> IO ()
     }
 
@@ -269,19 +269,12 @@ resetPass' st aid newpass = do
 
 createSession' :: AuthState -> EmailAddress -> Pass -> IO (Maybe SessionID)
 createSession' st email pass =
-    withTransaction (db' st) $
-      query1 (db' st) [email] [sql|
-        SELECT actor_id, actor_pass
-          FROM actors
-          WHERE actor_email_address = ?
-      |] >>= \case
-        Just (aid :: ActorID, encpass) | verifyPass pass encpass ->
-          query1 (db' st) [aid] [sql|
-            INSERT INTO sessions (actor_id)
-            VALUES (?)
-            RETURNING session_id
-          |]
-        _ -> return Nothing
+    withFoundVerifiedActor' st email pass $ \aid ->
+      query1 (db' st) [aid] [sql|
+        INSERT INTO sessions (actor_id)
+        VALUES (?)
+        RETURNING session_id
+      |]
 
 deleteSession' :: AuthState -> SessionID -> IO ()
 deleteSession' st sid =
@@ -316,52 +309,36 @@ getName' st sid =
       WHERE session_id = ?
     |]
 
-setEmailAddress' :: AuthState -> SessionID -> Pass -> EmailAddress -> IO Bool
+setEmailAddress' :: AuthState -> SessionID -> Pass -> EmailAddress -> IO (Maybe ())
 setEmailAddress' st sid pass newemail =
-    withTransaction (db' st) $
-      query1 (db' st) [sid] [sql|
-        SELECT actor_id, actor_pass
-          FROM actors
-          NATURAL JOIN sessions
-          WHERE session_id = ?
-      |] >>= \case
-        Just (aid :: ActorID, encpass) | verifyPass pass encpass -> do
-          execute (db' st) (newemail, aid) [sql|
-            UPDATE actors
-            SET actor_email_address = ?
-            WHERE actor_id = ?
-          |]
-          execute (db' st) (aid, sid) [sql|
-            DELETE FROM sessions
-            WHERE actor_id = ?
-            AND session_id <> ?
-          |]
-          return True
-        _ -> return False
+    withVerifiedActor' st sid pass $ \aid -> do
+      execute (db' st) (newemail, aid) [sql|
+        UPDATE actors
+        SET actor_email_address = ?
+        WHERE actor_id = ?
+      |]
+      execute (db' st) (aid, sid) [sql|
+        DELETE FROM sessions
+        WHERE actor_id = ?
+        AND session_id <> ?
+      |]
+      return (Just ())
 
-setPass' :: AuthState -> SessionID -> Pass -> Pass -> IO Bool
+setPass' :: AuthState -> SessionID -> Pass -> Pass -> IO (Maybe ())
 setPass' st sid pass newpass = do
     newencpass <- encryptPass newpass
-    withTransaction (db' st) $
-      query1 (db' st) [sid] [sql|
-        SELECT actor_id, actor_pass
-          FROM actors
-          NATURAL JOIN sessions
-          WHERE session_id = ?
-      |] >>= \case
-        Just (aid :: ActorID, encpass) | verifyPass pass encpass -> do
-          execute (db' st) (newencpass, aid) [sql|
-            UPDATE actors
-            SET actor_pass = ?
-            WHERE actor_id = ?
-          |]
-          execute (db' st) (aid, sid) [sql|
-            DELETE FROM sessions
-            WHERE actor_id = ?
-            AND session_id <> ?
-          |]
-          return True
-        _ -> return False
+    withVerifiedActor' st sid pass $ \aid -> do
+      execute (db' st) (newencpass, aid) [sql|
+        UPDATE actors
+        SET actor_pass = ?
+        WHERE actor_id = ?
+      |]
+      execute (db' st) (aid, sid) [sql|
+        DELETE FROM sessions
+        WHERE actor_id = ?
+        AND session_id <> ?
+      |]
+      return (Just ())
 
 setName' :: AuthState -> SessionID -> Name -> IO ()
 setName' st sid newname =
@@ -372,5 +349,30 @@ setName' st sid newname =
       NATURAL JOIN sessions
       WHERE session_id = ?
     |]
+
+--------------------------------------------------------------------------------
+
+withFoundVerifiedActor' :: AuthState -> EmailAddress -> Pass -> (ActorID -> IO (Maybe a)) -> IO (Maybe a)
+withFoundVerifiedActor' st email pass act =
+    withTransaction (db' st) $
+      query1 (db' st) [email] [sql|
+        SELECT actor_id, actor_pass
+          FROM actors
+          WHERE actor_email_address = ?
+      |] >>= \case
+        Just (aid, encpass) | verifyPass pass encpass -> act aid
+        _ -> return Nothing
+
+withVerifiedActor' :: AuthState -> SessionID -> Pass -> (ActorID -> IO (Maybe a)) -> IO (Maybe a)
+withVerifiedActor' st sid pass act =
+    withTransaction (db' st) $
+      query1 (db' st) [sid] [sql|
+        SELECT actor_id, actor_pass
+          FROM actors
+          NATURAL JOIN sessions
+          WHERE session_id = ?
+      |] >>= \case
+        Just (aid, encpass) | verifyPass pass encpass -> act aid
+        _ -> return Nothing
 
 --------------------------------------------------------------------------------
