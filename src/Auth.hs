@@ -127,7 +127,7 @@ createAuthSchema db =
           createSessionsTable db
           createOrgsTable db
           createRolesTable db
-          createPrivilegesTable db
+          createPrivsTable db
           createPerformsTable db
           createIncludesTable db
 
@@ -180,16 +180,16 @@ createRolesTable db = do
     createAudit db "roles"
     createNotify db "roles" "role_id"
 
-createPrivilegesTable :: DB -> IO ()
-createPrivilegesTable db = do
+createPrivsTable :: DB -> IO ()
+createPrivsTable db = do
     execute_ db [sql|
-      CREATE TABLE privileges
-        ( privilege_id   serial PRIMARY KEY
-        , privilege_name text   NOT NULL UNIQUE
+      CREATE TABLE privs
+        ( priv_id   serial PRIMARY KEY
+        , priv_name text   NOT NULL UNIQUE
         )
     |]
-    createAudit db "privileges"
-    createNotify db "privileges" "privilege_id"
+    createAudit db "privs"
+    createNotify db "privs" "priv_id"
 
 createPerformsTable :: DB -> IO ()
 createPerformsTable db = do
@@ -209,10 +209,10 @@ createIncludesTable :: DB -> IO ()
 createIncludesTable db = do
     execute_ db [sql|
       CREATE TABLE includes
-        ( include_id   serial  PRIMARY KEY
-        , role_id      integer NOT NULL REFERENCES roles
-        , privilege_id integer NOT NULL REFERENCES privileges
-        , UNIQUE (role_id, privilege_id)
+        ( include_id serial  PRIMARY KEY
+        , role_id    integer NOT NULL REFERENCES roles
+        , priv_id    integer NOT NULL REFERENCES privs
+        , UNIQUE (role_id, priv_id)
         )
     |]
     createAudit db "includes"
