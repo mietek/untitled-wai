@@ -27,7 +27,6 @@ import qualified Database.PostgreSQL.Simple.ToField as P
 import Crypto (Pass, encryptPass, verifyPass)
 import DB (DB (..), sql)
 import DB.Audit (createAudit)
-import DB.Notify (createNotify)
 import Utils (EmailAddress, Name)
 
 --------------------------------------------------------------------------------
@@ -67,7 +66,6 @@ data AuthState = AuthState
 
 initAuth :: DB -> IO Auth
 initAuth db = do
-    createAuditSchema db
     createAuthSchema db
     let
       st = AuthState
@@ -210,8 +208,8 @@ getEmailAddress' :: AuthState -> SessionID -> IO (Maybe EmailAddress)
 getEmailAddress' st sid =
     query1 (db' st) [sid] [sql|
       SELECT actor_email_address
-      FROM actors
-      NATURAL JOIN sessions
+      FROM sessions
+      NATURAL JOIN actors
       WHERE session_id = ?
     |]
 
@@ -219,8 +217,8 @@ getName' :: AuthState -> SessionID -> IO (Maybe Name)
 getName' st sid =
     query1 (db' st) [sid] [sql|
       SELECT actor_email_name
-      FROM actors
-      NATURAL JOIN sessions
+      FROM sessions
+      NATURAL JOIN actors
       WHERE session_id = ?
     |]
 
@@ -260,8 +258,8 @@ setName' st sid newname =
     execute (db' st) (newname, sid) [sql|
       UPDATE actors
       SET actor_name = ?
-      FROM actors
-      NATURAL JOIN sessions
+      FROM sessions
+      NATURAL JOIN actors
       WHERE session_id = ?
     |]
 
@@ -283,8 +281,8 @@ withVerifiedActor' st sid pass act =
     withTransaction (db' st) $
       query1 (db' st) [sid] [sql|
         SELECT actor_id, actor_pass
-          FROM actors
-          NATURAL JOIN sessions
+          FROM sessions
+          NATURAL JOIN actors
           WHERE session_id = ?
       |] >>= \case
         Just (aid, encpass) | verifyPass pass encpass -> act aid

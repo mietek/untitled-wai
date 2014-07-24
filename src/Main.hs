@@ -15,6 +15,7 @@ import qualified Network.HTTP.Types as HTTP
 import qualified Network.Wai as WAI
 import qualified Network.Wai.Handler.Warp as Warp
 
+import Access (initAccess)
 import Auth (initAuth)
 import DB (initDB)
 
@@ -28,6 +29,7 @@ main = do
     dburl <- getEnv "DATABASE_URL"
     db <- initDB dburl
     _ <- initAuth db
+    _ <- initAccess db
     putStrLn ("Listening started on port " ++ show port)
     Warp.run port app
 
