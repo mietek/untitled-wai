@@ -5,8 +5,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module DB.Audit
-    ( createAuditSchema
-    , createAudit
+    ( createAudit
     )
   where
 
@@ -15,19 +14,6 @@ import qualified Database.PostgreSQL.Simple.Types as P
 import DB (DB (..), extendID, sql)
 
 --------------------------------------------------------------------------------
-
-createAuditSchema :: DB -> IO ()
-createAuditSchema db =
-    withTransaction db $
-      query1_ db [sql|
-        SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'hstore')
-      |] >>= \case
-        Just ([True]) -> return ()
-        _ -> do
-          putStrLn "Creating audit schema"
-          execute_ db [sql|
-            CREATE EXTENSION hstore
-          |]
 
 createAudit :: DB -> P.Identifier -> IO ()
 createAudit db tab = do
@@ -53,8 +39,8 @@ createAuditTable db tab = do
 
 createAuditFunction :: DB -> P.Identifier -> IO ()
 createAuditFunction db tab = do
-    let afun = extendID tab "_audit"
-    execute db (afun, tab, tab, tab) [sql|
+    let atab = extendID tab "_audit"
+    execute db (atab, atab, atab, atab) [sql|
       CREATE FUNCTION ?() RETURNS trigger
       AS $plpgsql$
       BEGIN

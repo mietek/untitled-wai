@@ -5,7 +5,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module Auth
     ( ActorID
@@ -18,7 +17,6 @@ module Auth
 import Control.Applicative ((<$>))
 import Data.ByteString (ByteString)
 import Data.Hashable (Hashable)
-import Data.Text (Text)
 import GHC.Generics (Generic)
 
 import qualified Database.PostgreSQL.Simple as P
@@ -28,28 +26,9 @@ import qualified Database.PostgreSQL.Simple.ToField as P
 
 import Crypto (Pass, encryptPass, verifyPass)
 import DB (DB (..), sql)
-import DB.Audit (createAudit, createAuditSchema)
+import DB.Audit (createAudit)
 import DB.Notify (createNotify)
-
---------------------------------------------------------------------------------
-
-newtype EmailAddress = EmailAddress Text
-  deriving (Eq, Generic, Hashable, Ord, P.FromField, P.ToField, Show)
-
-instance P.FromRow EmailAddress where
-  fromRow = EmailAddress <$> P.field
-
-newtype UniqueName = UniqueName Text
-  deriving (Eq, Generic, Hashable, Ord, P.FromField, P.ToField, Show)
-
-instance P.FromRow UniqueName where
-  fromRow = UniqueName <$> P.field
-
-newtype Name = Name Text
-  deriving (Eq, Generic, Hashable, Ord, P.FromField, P.ToField, Show)
-
-instance P.FromRow Name where
-  fromRow = Name <$> P.field
+import Utils (EmailAddress, Name)
 
 --------------------------------------------------------------------------------
 
@@ -115,21 +94,19 @@ createAuthSchema :: DB -> IO ()
 createAuthSchema db =
     withTransaction db $
       query1_ db [sql|
-        SELECT EXISTS (SELECT * FROM pg_extension WHERE extname = 'pgcrypto')
+        SELECT TRUE FROM pg_tables WHERE tablename = 'actors'
       |] >>= \case
         Just ([True]) -> return ()
         _ -> do
           putStrLn "Creating auth schema"
           execute_ db [sql|
+            CREATE EXTENSION hstore
+          |]
+          execute_ db [sql|
             CREATE EXTENSION pgcrypto
           |]
           createActorsTable db
           createSessionsTable db
-          createOrgsTable db
-          createRolesTable db
-          createPrivsTable db
-          createPerformsTable db
-          createIncludesTable db
 
 createActorsTable :: DB -> IO ()
 createActorsTable db = do
@@ -142,13 +119,12 @@ createActorsTable db = do
         )
     |]
     createAudit db "actors"
-    createNotify db "actors" "actor_id"
 
 createSessionsTable :: DB -> IO ()
 createSessionsTable db = do
     execute_ db [sql|
       CREATE TABLE sessions
-        ( session_id bytea   PRIMARY KEY DEFAULT gen_random_bytes(16)
+        ( session_id bytea   PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex')
         , actor_id   integer NOT NULL REFERENCES actors
         )
     |]
@@ -156,67 +132,6 @@ createSessionsTable db = do
       CREATE INDEX ON sessions (actor_id)
     |]
     createAudit db "sessions"
-    createNotify db "sessions" "session_id"
-
-createOrgsTable :: DB -> IO ()
-createOrgsTable db = do
-    execute_ db [sql|
-      CREATE TABLE orgs
-        ( org_id   serial PRIMARY KEY
-        , org_name text   NOT NULL
-        )
-    |]
-    createAudit db "orgs"
-    createNotify db "orgs" "org_id"
-
-createRolesTable :: DB -> IO ()
-createRolesTable db = do
-    execute_ db [sql|
-      CREATE TABLE roles
-        ( role_id   serial PRIMARY KEY
-        , role_name text   NOT NULL UNIQUE
-        )
-    |]
-    createAudit db "roles"
-    createNotify db "roles" "role_id"
-
-createPrivsTable :: DB -> IO ()
-createPrivsTable db = do
-    execute_ db [sql|
-      CREATE TABLE privs
-        ( priv_id   serial PRIMARY KEY
-        , priv_name text   NOT NULL UNIQUE
-        )
-    |]
-    createAudit db "privs"
-    createNotify db "privs" "priv_id"
-
-createPerformsTable :: DB -> IO ()
-createPerformsTable db = do
-    execute_ db [sql|
-      CREATE TABLE performs
-        ( perform_id serial  PRIMARY KEY
-        , actor_id   integer NOT NULL REFERENCES actors
-        , role_id    integer NOT NULL REFERENCES roles
-        , org_id     integer NOT NULL REFERENCES orgs
-        , UNIQUE (actor_id, role_id, org_id)
-        )
-    |]
-    createAudit db "performs"
-    createNotify db "performs" "perform_id"
-
-createIncludesTable :: DB -> IO ()
-createIncludesTable db = do
-    execute_ db [sql|
-      CREATE TABLE includes
-        ( include_id serial  PRIMARY KEY
-        , role_id    integer NOT NULL REFERENCES roles
-        , priv_id    integer NOT NULL REFERENCES privs
-        , UNIQUE (role_id, priv_id)
-        )
-    |]
-    createAudit db "includes"
-    createNotify db "includes" "include_id"
 
 --------------------------------------------------------------------------------
 
@@ -286,7 +201,7 @@ deleteSession' st sid =
 getActor' :: AuthState -> SessionID -> IO (Maybe ActorID)
 getActor' st sid =
     query1 (db' st) [sid] [sql|
-      SELECT actors_id
+      SELECT actor_id
       FROM sessions
       WHERE session_id = ?
     |]

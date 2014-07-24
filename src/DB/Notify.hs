@@ -30,17 +30,17 @@ listen db tab = do
 
 createNotifyFunction :: DB -> P.Identifier -> P.Identifier -> IO ()
 createNotifyFunction db tab col = do
-    let nfun = extendID tab "_notify"
-    execute db (nfun, tab, col, tab, col, col, tab, col) [sql|
+    let ntab = extendID tab "_notify"
+    execute db (ntab, tab, col, tab, col, col, tab, col) [sql|
       CREATE FUNCTION ?() RETURNS trigger
       AS $plpgsql$
       BEGIN
         IF TG_OP = 'INSERT' THEN
-          PERFORM pg_notify('?', 'INSERT ' || NEW.?);
+          PERFORM pg_notify('?', 'INSERT ' || text(NEW.?));
         ELSIF TG_OP = 'UPDATE' THEN
-          PERFORM pg_notify('?', 'UPDATE ' || OLD.? || ' ' || NEW.?);
+          PERFORM pg_notify('?', 'UPDATE ' || text(OLD.?) || ' ' || text(NEW.?));
         ELSIF TG_OP = 'DELETE' THEN
-          PERFORM pg_notify('?', 'DELETE ' || OLD.?);
+          PERFORM pg_notify('?', 'DELETE ' || text(OLD.?));
         END IF;
         RETURN NULL;
       END;
@@ -49,8 +49,8 @@ createNotifyFunction db tab col = do
 
 createNotifyTrigger :: DB -> P.Identifier -> IO ()
 createNotifyTrigger db tab = do
-    let nfun = extendID tab "_notify"
-    execute db (tab, nfun) [sql|
+    let ntab = extendID tab "_notify"
+    execute db (tab, ntab) [sql|
       CREATE TRIGGER notify
       AFTER INSERT OR UPDATE OR DELETE ON ?
       FOR EACH ROW EXECUTE PROCEDURE ?()
