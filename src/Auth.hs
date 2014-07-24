@@ -154,8 +154,8 @@ deleteActor' st aid =
         WHERE actor_id = ?
       |]
       execute (db' st) [aid] [sql|
-        DELETE FROM performs
-        WHERE perform_actor_id = ?
+        DELETE FROM performing_at
+        WHERE actor_id = ?
       |]
 
 findActor' :: AuthState -> EmailAddress -> IO (Maybe ActorID)

@@ -129,7 +129,7 @@ createPerformingAtTable db = do
         , UNIQUE (actor_id, role_id, org_id)
         )
     |]
-    createAudit db "performs"
+    createAudit db "performing_at"
 
 createIncludingTable :: DB -> IO ()
 createIncludingTable db = do
