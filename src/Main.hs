@@ -6,7 +6,6 @@
 module Main where
 
 import Control.Applicative ((<$>))
-import Data.ByteString.Lazy (ByteString)
 import Data.Char (isHexDigit)
 import Data.List (dropWhileEnd)
 import Data.Text (Text)
@@ -17,6 +16,7 @@ import System.IO (BufferMode (..), hSetBuffering, stdout)
 import System.Posix.Process (exitImmediately)
 import System.Posix.Signals (Handler (..), installHandler, sigTERM)
 
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as T
 import qualified Network.HTTP.Types as HTTP
 import qualified Network.Wai as WAI
@@ -166,12 +166,12 @@ deleteSession req sid = do
 
 --------------------------------------------------------------------------------
 
-okText :: ByteString -> IO WAI.Response
+okText :: LBS.ByteString -> IO WAI.Response
 okText body = do
     putStrLn "Accepting request with status 200"
     text HTTP.ok200 body
 
-createdText :: ByteString -> IO WAI.Response
+createdText :: LBS.ByteString -> IO WAI.Response
 createdText body = do
     putStrLn "Accepting request with status 201"
     text HTTP.created201 body
@@ -196,8 +196,8 @@ methodNotAllowedText = do
     putStrLn "Rejecting request with status 405"
     text HTTP.methodNotAllowed405 "Client error: Method not allowed (405)"
 
-text :: HTTP.Status -> ByteString -> IO WAI.Response
+text :: HTTP.Status -> LBS.ByteString -> IO WAI.Response
 text status body =
-    return (WAI.responseLBS status [("Content-Type", "text/plain")] body)
+    return (WAI.responseLBS status [("Content-Type", "text/plain")] (LBS.append body "\n"))
 
 --------------------------------------------------------------------------------
