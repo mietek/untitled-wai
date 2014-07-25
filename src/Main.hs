@@ -8,6 +8,7 @@ module Main where
 import Control.Applicative ((<$>))
 import Data.ByteString.Lazy (ByteString)
 import Data.Char (isHexDigit)
+import Data.List (dropWhileEnd)
 import Data.Text (Text)
 import Network.HTTP.Types (StdMethod (..))
 import System.Environment (getEnv)
@@ -70,9 +71,10 @@ toSessionID segment
 
 app :: WAI.Application
 app req respond = do
+    let path = dropWhileEnd T.null (WAI.pathInfo req)
     res <- case HTTP.parseMethod (WAI.requestMethod req) of
       Right method ->
-        route req (WAI.pathInfo req) method
+        route req path method
       Left _ ->
         badRequestText
     respond res
