@@ -79,6 +79,7 @@ app req respond = do
 
 route :: WAI.Request -> [Text] -> StdMethod -> IO WAI.Response
 route req path method = do
+    putStrLn ("Path: " ++ show path)
     case path of
       ["accounts"] ->
         case method of
